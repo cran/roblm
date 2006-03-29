@@ -17,10 +17,17 @@ function (object, correlation = FALSE,
     ans <- z[c("call", "terms")]
     ans$df<-df
     ans$residuals <- r
-    ans$coefficients <- cbind(est, se, tval, 2 * pt(abs(tval), 
-        df, lower.tail = FALSE))
-    dimnames(ans$coefficients) <- list(names(z$coefficients), 
-        c("Estimate", "Std. Error", "t value", "Pr(>|t|)"))
+	ans$converged <- z$converged
+	if( !(ans$converged) ) {
+		ans$coefficients <- cbind(est, NA, NA, NA)
+    	dimnames(ans$coefficients) <- list(names(z$coefficients), 
+       		 c("Estimate", "Std. Error", "t value", "Pr(>|t|)"))
+		} else {
+    	ans$coefficients <- cbind(est, se, tval, 2 * pt(abs(tval), 
+       		 df, lower.tail = FALSE))
+    	dimnames(ans$coefficients) <- list(names(z$coefficients), 
+       		 c("Estimate", "Std. Error", "t value", "Pr(>|t|)"))
+	}
     ans$scale <- z$scale
     ans$cov.unscaled <- z$cov
     dimnames(ans$cov.unscaled) <- dimnames(ans$coefficients)[c(1,1)]
@@ -32,3 +39,4 @@ function (object, correlation = FALSE,
     class(ans) <- "summary.roblm"
     ans
 }
+

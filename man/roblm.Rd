@@ -30,17 +30,16 @@ score function, and by default it returns a highly
 robust and highly efficient estimator (with
 50\% breakdown point and 95\% asymptotic efficiency
 for normal errors). It uses an S-estimator (Rousseeuw 
-and Yohai, 1984) for the errors
-scale. This estimator is also computed with a 
-bi-square score function. This function uses the 
-Fast-S algorithm of Salibian-Barrera and Yohai (2005)
-to compute the S-estimators.
-
-Standard errors are computed using the stable 
-asymptotic formula of Croux, Dhaene and Hoorelbeke
-(2004). There is also the option of using the
-Robust Bootstrap of Salibian-Barrera and Zamar (2002). 
-See \code{roblm.control}. 
+and Yohai, 1984) for the errors which
+is also computed with a 
+bi-square score function. 
+The S-estimator is computed using the
+Fast-S algorithm of Salibian-Barrera and Yohai (2006).
+Standard errors are computed using the 
+formulas 
+for homoscedastic and independent errors
+of Croux, Dhaene and Hoorelbeke
+(2003). 
 }
 \value{
   An object of class \code{roblm}. A list that includes the
@@ -56,15 +55,33 @@ See \code{roblm.control}.
   \item{converged}{\code{TRUE} if the IRWLS iterations
   converged}
 }
-\references{ Rousseeuw and Yohai (1984);
-Yohai (1987); Salibian-Barrera and Yohai (2005) }
+\references{ 
+Croux, C., Dhaene, G. and Hoorelbeke, D. (2003)
+Robust standard errors
+for robust estimators, Discussion Papers Series 03.16, K.U. Leuven, CES.
+
+Rousseeuw, P.J. and Yohai, V.J. (1984)
+Robust regression by means of 
+S-estimators, In Robust and Nonlinear Time Series, J. Franke, W. 
+H\"ardle and
+R. D.
+Martin (eds.). Lectures Notes in Statistics 26, 256-272, Springer Verlag, 
+New York.
+
+Salibian-Barrera, M. and Yohai, V.J. (2006) 
+A fast algorithm for S-regression estimates, Journal of 
+Computational and Graphical Statistics, in press.
+
+Yohai, V.J. (1987)
+High breakdown-point and high efficiency estimates for
+regression, The Annals of Statistics 15, 642-65.
+}
 \author{ Matias Salibian-Barrera }
 \note{ }
 \seealso{ \code{\link{roblm.control}} }
 \examples{
 data(coleman.dat, package='roblm')
-summary( roblm(y~., data=coleman.dat, control = 
-	roblm.control(compute.roboot=TRUE) ) )
+summary( roblm(y~., data=coleman.dat) )
 }
 \keyword{ robust }% at least one, from doc/KEYWORDS
 \keyword{ regression }% __ONLY ONE__ keyword per line

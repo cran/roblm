@@ -1,14 +1,18 @@
 
+/* write header */
+/* Robust MM regression estimates  */
+/* comment code */
+/* adapt other sampler */
+/* check pointers returned by malloc */
+/* replace abort for too many singular resamples by
+ * returning the number of singular ones
+ */
 
 /* file R-roblm.c
-// version 0.5
+// version 0.6
 // Includes the stable correct asymptotic variance estimators
 // of Croux, Dhaene, Hoorelbeke
 // Includes the fast-s algorithm
-// max_it for rwls() is passed from R, an indicator of
-// convergence (converged_mm) is returned ("1" mean "converged",
-// "0" means "failed to converge")
-//
 */
 
 #include <stdio.h>
@@ -16,573 +20,20 @@
 #include <math.h>
 #include <R.h>
 
-#define NA 99999.99
-#define max(a,b) ((a)>(b)?(a):(b))
 #define EPS 1e-7
-#define EPS2 1e-4
-#define TOL 1e-8
 #define ZERO 1e-10
-#define EPSILON 1e-20
 #define INFI 1e+20
-/* #define MAX_ITER 50 */
 #define MAX_ITER_FAST_S 50
 #define MAX_NO_RESAMPLES 500
 #define MAX_ITER_FIND_SCALE 200
 #define TOL_INVERSE ZERO
 
-/* Robust bootstrap for regression estimates  */
 
-void R_rlm_rand(double *X, double *y, int *N, int *P, int *Nres, 
-		int *M, int *MAX_IT, double *ours, double *av,
-		double *Beta_m, double *Beta_s, double *Scale,
-		int *converged_mm,
-		int *Seed, double *C, double *Psi_c, 
-		int *Compute_roboot, int *Groups, int *N_group, int *K_fast_s)
-/* x <- design, y <- response, n <- #obs
- * p <- dimension, nres <- #resampling ,
- * ours <- m x p matrix, full <- m x p matrix */
-{
-void r_sum_w_x_xprime(double **x, double *w, int n, int p,
-			double **tmp, double **ans);
-void r_sum_w_x(double **x, double *w, int n, int p,
-			double *tmp,
-			double *sum);
-void reset_mat(double**, int, int);
-void reset_vec(double*, int);
-void R_S_rlm(double *X, double *y, int *n, int *P, 
-		int *nres, int *max_it,
-		double *SCale, double *beta_s, double *beta_m,
-		int *converged_mm,
-		int *seed_rand, double *C, double *Psi_c,
-		int *, int *, int *);
-double Psi_reg(double,double);
-double Psi_reg_prime(double,double);
-double Chi_prime(double,double);
-double Chi(double,double);
-void sampler_i(int, int *);
-int inverse(double **,double **, int);
-void matias_vec_vec(double **, double *, double *, int);
-void scalar_mat(double **, double, double **, int, int);
-void scalar_vec(double *, double, double *, int);
-void sum_mat(double **,double **, double **, int, int);
-void sum_vec(double *, double *, double *, int);
-void dif_mat(double **, double **, double **, int , int );
-void dif_vec(double *, double *, double *, int);
-void mat_vec(double **, double *, double *, int, int);
-void mat_mat(double **, double **, double **, int, int, int);
-void disp_vec(double *, int);
-void disp_mat(double **, int, int);
-double *Xb, **xb; 
-double **x, **x2, **x3, **x4, *beta_m, *beta_s,*beta_aux;
-double **x5, **x6, **x7, **x8;
-double *Fi, *res, *res_s, *w, *ww, scale; 
-double *v, *v2, *v_aux, *yb; 
-double *weights;
-double u,u2,s,c,Psi_constant;
-int n,p,m,nres,seed,*indices;
-register int i,j,k;
-int compute_roboot = *Compute_roboot; 
-c = *C; Psi_constant = *Psi_c;
-n = *N; p = *P; nres = *Nres; m = *M; seed = *Seed;
-indices = (int *) malloc( n * sizeof(int) );
-v = (double *) malloc( p * sizeof(double) );
-v2 = (double *) malloc( p * sizeof(double) );
-v_aux = (double *) malloc( p * sizeof(double) );
-yb = (double *) malloc( n * sizeof(double) );
-Xb = (double*) malloc( n * p * sizeof(double) ); 
-x =  (double **) malloc ( n * sizeof(double *) );
-xb =  (double **) malloc ( n * sizeof(double *) );
-Fi  = (double *) malloc ( n * sizeof(double) );
-res = (double *) malloc ( n * sizeof(double) );
-res_s = (double *) malloc ( n * sizeof(double) );
-ww  = (double *) malloc ( n * sizeof(double) );
-w   = (double *) malloc ( n * sizeof(double) );
-x2 = (double **) malloc ( p * sizeof(double *) );
-x3 = (double **) malloc ( p * sizeof(double *) );
-x4 = (double **) malloc ( p * sizeof(double *) );
-x5 = (double **) malloc ( p * sizeof(double *) );
-x6 = (double **) malloc ( p * sizeof(double *) );
-x7 = (double **) malloc ( p * sizeof(double *) );
-x8 = (double **) malloc ( p * sizeof(double *) );
-beta_aux = (double *) malloc( p * sizeof(double) );
-beta_m = (double *) malloc( p * sizeof(double) );
-beta_s = (double *) malloc( p * sizeof(double) );
-weights = (double *) malloc( n * sizeof(double) );
-for(i=0;i<n;i++) {
-	x[i] =  (double*) malloc (p * sizeof(double) );
-	xb[i] =  (double*) malloc ((p+1) * sizeof(double) );
-	};
-for(i=0;i<p;i++) {
-	x2[i] = (double*) malloc (p * sizeof(double) );
-	x3[i] = (double*) malloc (p * sizeof(double) );
-	x4[i] = (double*) malloc (p * sizeof(double) );
-	x5[i] = (double*) malloc (p * sizeof(double) );
-	x6[i] = (double*) malloc (p * sizeof(double) );
-	x7[i] = (double*) malloc (p * sizeof(double) );
-	x8[i] = (double*) malloc (p * sizeof(double) );
-};
-/* copy X into x for easier handling */
-for(i=0;i<n;i++) 
-        for(j=0;j<p;j++)
-                x[i][j]=X[j*n+i];
-/* calculate robust regression estimates */
-R_S_rlm(X,y,N,P,Nres,MAX_IT,&scale,Beta_s,Beta_m,
-		converged_mm, &seed,&c,
-		Psi_c, Groups, N_group, K_fast_s);
-*Scale = scale;
-
-if( fabs(scale) < ZERO) {
-for(i=0;i<n;i++)  
-	free(x[i]);
-for(i=0;i<p;i++) {
-	free(x2[i]); free(x3[i]); free(x4[i]); free(x5[i]);
-	free(x6[i]); free(x7[i]); free(x8[i]); };
-free(x) ;free(x2); free(x3);free(x4); free(x5); free(x6); free(x7); free(x8);
-free(beta_aux);free(beta_m);free(beta_s); free(w);free(ww);free(Fi);free(res);
-free(v);free(v2);free(v_aux);free(yb); free(indices); free(weights);
-return;
-};
-
-/* get M-fitted values in Fi */
-mat_vec(x,Beta_m,Fi,n,p);
-/* get residuals of M-est in res */
-dif_vec(y,Fi,res,n);
-/* get S-fitted values in res_s */
-mat_vec(x,Beta_s,res_s,n,p);
-/* get residuals of S-est in res_s */
-dif_vec(y,res_s,res_s,n);
-
-if( compute_roboot == 1 ) {
-/* set auxiliary matrices to zero */
-reset_mat(x3, p, p);
-reset_mat(x4, p, p);
-reset_vec(v, p);
-
-u2 = 0.0;
-/* calculate correction matrix */
-
-for(i=0;i<n;i++) {
-	u = res[i]/scale ;
-	w[i]  = Psi_reg(u,Psi_constant)/res[i];
-        matias_vec_vec(x2,x[i],x[i],p);
-	scalar_mat(x2,Psi_reg_prime(u,Psi_constant),
-                x2,p,p);
-        sum_mat(x3,x2,x3,p,p);
-        matias_vec_vec(x2,x[i],x[i],p);
-        scalar_mat(x2,w[i],x2,p,p);
-        sum_mat(x4,x2,x4,p,p);
-	scalar_vec(x[i],Psi_reg_prime(u,Psi_constant)*u,v_aux,p);
-	sum_vec(v,v_aux,v,p);
-	u2 += Chi_prime(u, c) * u;
-};	
-
-scalar_vec(v, .5 * (double) (n-p) * scale / u2 , v, p);
-inverse(x3,x2,p);
-mat_mat(x2,x4,x3,p,p,p);
-mat_vec(x2,v,v2,p,p);
-scalar_mat(x3,scale,x3,p,p);
-/* the correction matrix is now in x3 */
-/* the correction vector is now in v2 */
-
-
-/* start the bootstrap replications */
-for(i=0;i<m;i++) {
-	/* change the seed! */
-	++seed;
-	sampler_i(n,indices);
-	/* get pseudo observed y's */
-	for(j=0;j<n;j++) /* xb[j][p] = */ 
-			yb[j] = y[indices[j]];
-	for(j=0;j<n;j++) 
-		for(k=0;k<p;k++) {
-			xb[j][k] = x[indices[j]][k]; 
-			Xb[k*n+j] = X[k*n + indices[j]]; 
-		};
-	reset_vec(v, p);
-	reset_mat(x2, p, p);
-	s = 0.0;
-	for(j=0;j<n;j++) {
-		scalar_vec(xb[j],yb[j]*w[indices[j]],v_aux,p);
-		sum_vec(v,v_aux,v,p);
-		matias_vec_vec(x4,xb[j],xb[j],p);
-		scalar_mat(x4,w[indices[j]],x4,p,p);
-		sum_mat(x2,x4,x2,p,p);
-		s += Chi(res_s[indices[j]] / scale , c);
-	};
-	s = s * scale / .5 / (double) (n - p)  ; 
-	/* s = s * scale / .5 / (double) n;  */
-	inverse(x2,x4,p);		/* x4 <- x2^-1 */
-	mat_vec(x4,v,v_aux,p,p);	/* v_aux <- x4 * v */ 
-	dif_vec(v_aux,Beta_m,v_aux,p); 	/* v_aux <- v_aux - beta_m */
-	/* v has the robust bootstrapped vector, correct it */ 
-	mat_vec(x3,v_aux,v,p,p);	/* v <- x3 * v_aux */ 
-	scalar_vec(v2,s-scale,v_aux,p);
-	sum_vec(v_aux,v,v,p);
-	/* store the betas (splus-wise!) */
-	for(j=0;j<p;j++) {
-		ours[j*m+i]=v[j];
-	};
-};
-
-}; /* end if(compute_roboot==1) */
-
-/* Asymptotic variance */
-
-/*	A = sigma \sum \psi'(r_i) x_i x_i' / n
-	a = A \mean( \psi'(r_i) x_i r_i ) / 
- 		\mean( \chi'(r_i) r_i )
-	AV = A \mean( \psi(r_i)^2 x_i x_i') A -
- 			a \mean( \chi(r_i) \psi(r_i) x_i' ) A -
-			A \mean( \chi(r_i) \psi(r_i) x_i ) a' +
-			\mean( \chi(r_i)^2 - b^2 ) a a'
-*/
-for(i=0;i<n;i++) weights[i] = 1.0 / (double) n / scale * 
-			Psi_reg_prime(res[i]/scale,Psi_constant);
-r_sum_w_x_xprime(x, weights, n, p, x2, x3);
-r_sum_w_x_xprime(x, weights, n, p, x2, x3);
-inverse(x3, x2, p);
-/* x2 = A -- locked */
-s = 0.0;
-for(i=0;i<n;i++) s += Chi_prime(res_s[i]/scale, c) *
-				res_s[i] / scale; 
-s /= (double) n;
-for(i=0;i<n;i++) weights[i] = 
-			Psi_reg_prime(res[i]/scale,Psi_constant) *
-				res[i] / scale / 
-				(double) n / s ;
-r_sum_w_x(x, weights, n, p, v_aux, v);
-mat_vec(x2, v, v2, p, p);
-/* v2 = A v = a -- locked */
-for(i=0;i<n;i++) {
-			u = Psi_reg(res[i]/scale,Psi_constant) ;
-			weights[i] = u*u / (double) n;
-};
-r_sum_w_x_xprime(x, weights, n, p, x3, x5);
-/* x5 = \mean( \psi(r_i)^2 x_i x_i')  */
-mat_mat(x2, x5, x3, p, p, p);
-/* x3 = x2 x5 = A x5 */
-mat_mat(x3, x2, x5, p, p, p);
-/* x5 = x3 x2 = A x5 A -- first term of AV -- locked */
-for(i=0;i<n;i++) weights[i] = Chi(res_s[i]/scale, c) *
-			Psi_reg(res[i]/scale,Psi_constant) /
-			(double) n;
-r_sum_w_x(x, weights, n, p, v_aux, v);
-/* v = \mean( \chi(r_i) \psi(r_i) x_i' )  -- locked */
-matias_vec_vec(x3, v2, v, p);
-/* x3 = a v = a \mean( \chi(r_i) \psi(r_i) x_i' ) */
-mat_mat(x3, x2, x4, p, p, p);
-/* x4 = x3 A = a \mean( \chi(r_i) \psi(r_i) x_i' ) A -- locked */
-/* second term of AV */
-matias_vec_vec(x6, v, v2, p);
-/* x6 = \mean( \chi(r_i) \psi(r_i) x_i ) a' */
-mat_mat(x2, x6, x7, p, p, p);
-/* x7 = A x6 = A \mean( \chi(r_i) \psi(r_i) x_i ) a' -- locked */
-/* third term of AV */
-matias_vec_vec(x8, v2, v2, p);
-/* x8 = a a' */
-s = 0.0;
-for(i=0;i<n;i++) {
-		u = Chi(res_s[i]/scale, c);
-		s += ( u * u - 0.25 );
-};
-s /= (double) n;
-scalar_mat(x8, s, x3, p, p);
-/* x3 = \mean( \chi(r_i)^2 - b^2 ) a a' -- locked */
-/* fourth term of AV */
-dif_mat(x5, x4, x2, p, p);
-/* x2 = x5 - x4 -- first difference in AV */
-dif_mat(x2, x7, x6, p, p);
-/* x6 = x2 - x7 = x5 - x4 - x7 */
-sum_mat(x6, x3, x2, p, p);
-/* x2 = x6 + x3 = x5 - x4 - x7 + x3 */
-/* x2 contains the AV matrix... */
-for(i=0;i<p;i++)
-	for(j=0;j<p;j++)
-		av[i+j*p] = x2[i][j] / (double) n;
-
-for(i=0;i<n;i++) { 
-	free(x[i]);free(xb[i]); };
-for(i=0;i<p;i++) {
-	free(x2[i]); free(x3[i]); free(x4[i]); free(x5[i]); free(x6[i]);
-	free(x7[i]); free(x8[i]); };
-free(x) ;free(x2);free(xb); free(x3);free(x4); free(x5); free(x6); free(x7);
-free(x8); free(beta_aux);free(beta_m);free(beta_s);
-free(w);free(ww);free(Fi);free(res); free(v);free(v2);free(v_aux);free(yb);
-free(res_s); free(indices); free(Xb); free(weights);
-}
- 
-void R_rlm_fixed(double *X, double *y, int *N, int *P, int *Nres, 
-		int *M, int *MAX_IT, double *ours, double *av,
-		double *Beta_m, double *Beta_s, double *Scale, 
-		int *converged_mm, int *Seed,
-		double *C, double *Psi_c, int *Compute_roboot, 
-		int *Groups, int *N_group, int *K_fast_s)
-/* x <- design, y <- response, n <- #obs
- * p <- dimension, nres <- #resampling ,
- * ours <- m x p matrix, full <- m x p matrix */
-{
-void r_sum_w_x_xprime(double **x, double *w, int n, int p,
-			double **tmp, double **ans);
-void r_sum_w_x(double **x, double *w, int n, int p,
-			double *tmp,
-			double *sum);
-void reset_mat(double**, int, int);
-void reset_vec(double*, int);
-void R_S_rlm(double *X, double *y, int *n, int *P, 
-		int *nres, int *max_it,
-		double *SCale, double *beta_s, double *beta_m,
-		int *converged_mm,
-		int *seed_rand, double *C, double *Psi_c,
-		int *, int *, int *);
-double Psi_reg(double,double);
-double Psi_reg_prime(double,double);
-double Chi_prime(double,double);
-double Chi(double,double);
-void sampler_i(int, int *);
-int inverse(double **,double **, int);
-void matias_vec_vec(double **, double *, double *, int);
-void scalar_mat(double **, double, double **, int, int);
-void scalar_vec(double *, double, double *, int);
-void sum_mat(double **,double **, double **, int, int);
-void sum_vec(double *, double *, double *, int);
-void dif_mat(double **, double **, double **, int , int );
-void dif_vec(double *, double *, double *, int);
-void mat_vec(double **, double *, double *, int, int);
-void mat_mat(double **, double **, double **, int, int, int);
-void disp_vec(double *, int);
-void disp_mat(double **, int, int);
-double **x, **x2, **x3, **x4, *beta_m, *beta_s,*beta_aux;
-double **x5, **x6, **x7, **x8;
-double *Fi, *res, *res_s, *w, *ww, scale; 
-double *v, *v2, *v_aux, *yb; 
-double u,u2,s,c,Psi_constant;
-double *weights;
-int n,p,m,nres,seed,*indices;
-register int i,j;
-int compute_roboot = *Compute_roboot; 
-c = *C; Psi_constant = *Psi_c;
-n = *N; p = *P; nres = *Nres; m = *M; seed = *Seed;
-indices = (int *) malloc( n * sizeof(int) );
-v = (double *) malloc( p * sizeof(double) );
-v2 = (double *) malloc( p * sizeof(double) );
-v_aux = (double *) malloc( p * sizeof(double) );
-yb = (double *) malloc( n * sizeof(double) );
-x =  (double **) malloc ( n * sizeof(double *) );
-Fi  = (double *) malloc ( n * sizeof(double) );
-res = (double *) malloc ( n * sizeof(double) );
-res_s = (double *) malloc ( n * sizeof(double) );
-ww  = (double *) malloc ( n * sizeof(double) );
-w   = (double *) malloc ( n * sizeof(double) );
-x2 = (double **) malloc ( p * sizeof(double *) );
-x3 = (double **) malloc ( p * sizeof(double *) );
-x4 = (double **) malloc ( p * sizeof(double *) );
-x5 = (double **) malloc ( p * sizeof(double *) );
-x6 = (double **) malloc ( p * sizeof(double *) );
-x7 = (double **) malloc ( p * sizeof(double *) );
-x8 = (double **) malloc ( p * sizeof(double *) );
-beta_aux = (double *) malloc( p * sizeof(double) );
-beta_m = (double *) malloc( p * sizeof(double) );
-beta_s = (double *) malloc( p * sizeof(double) );
-weights = (double*) malloc( n * sizeof(double) );
-for(i=0;i<n;i++) 
-	x[i] =  (double*) malloc ((p+1) * sizeof(double) );
-for(i=0;i<p;i++) {
-	x2[i] = (double*) malloc (p * sizeof(double) );
-	x3[i] = (double*) malloc (p * sizeof(double) );
-	x4[i] = (double*) malloc (p * sizeof(double) );
-	x5[i] = (double*) malloc (p * sizeof(double) );
-	x6[i] = (double*) malloc (p * sizeof(double) );
-	x7[i] = (double*) malloc (p * sizeof(double) );
-	x8[i] = (double*) malloc (p * sizeof(double) );
-};
-/* copy X into x for easier handling */
-for(i=0;i<n;i++) 
-        for(j=0;j<p;j++)
-                x[i][j]=X[j*n+i];
-/* calculate robust regression estimates 
-// now we use the fast-s algorithm
-*/
-R_S_rlm(X,y,N,P,Nres,MAX_IT,&scale,Beta_s,Beta_m,
-		converged_mm, &seed,C,
-		Psi_c, Groups, N_group, K_fast_s);
-*Scale = scale;
-
-if( fabs(scale) < ZERO) {
-for(i=0;i<n;i++)  
-	free(x[i]);
-for(i=0;i<p;i++) {
-	free(x2[i]); free(x3[i]); free(x4[i]); free(x5[i]);
-	free(x6[i]); free(x7[i]); free(x8[i]); };
-free(x) ;free(x2); free(x3);free(x4); free(x5); free(x6); free(x7); free(x8);
-free(beta_aux);free(beta_m);free(beta_s); free(w);free(ww);free(Fi);free(res);
-free(v);free(v2);free(v_aux);free(yb); free(indices); free(weights);
-return;
-};
-
-/* get M-fitted values in Fi */
-mat_vec(x,Beta_m,Fi,n,p);
-/* get residuals of M-est in res */
-dif_vec(y,Fi,res,n);
-/* get S-fitted values in res_s */
-mat_vec(x,Beta_s,res_s,n,p);
-/* get residuals of S-est in res_s */
-dif_vec(y,res_s,res_s,n);
-if( compute_roboot == 1) {
-/* set auxiliary matrices to zero */
-reset_mat(x3, p, p);
-reset_mat(x4, p, p);
-reset_vec(v, p);
-u2 = 0.0;
-/* calculate correction matrix */
-for(i=0;i<n;i++) {
-	u = res[i]/scale ;
-	w[i]  = Psi_reg(u,Psi_constant)/res[i];
-        matias_vec_vec(x2,x[i],x[i],p);
-	scalar_mat(x2,Psi_reg_prime(u,Psi_constant),
-                x2,p,p);
-        sum_mat(x3,x2,x3,p,p);
-        matias_vec_vec(x2,x[i],x[i],p);
-        scalar_mat(x2,w[i],x2,p,p);
-        sum_mat(x4,x2,x4,p,p);
-	scalar_vec(x[i],Psi_reg_prime(u,Psi_constant)*u,v_aux,p);
-	sum_vec(v,v_aux,v,p);
-	u2 += Chi_prime(u,c) * u;
-};	
-scalar_vec(v, .5 * (double) (n-p) * scale / u2 , v, p);
-inverse(x3,x2,p);
-mat_mat(x2,x4,x3,p,p,p);
-mat_vec(x2,v,v2,p,p);
-scalar_mat(x3,scale,x3,p,p);
-/* the correction matrix is now in x3 */
-/* the correction vector is now in v2 */
-/* start the bootstrap replications */
-for(i=0;i<m;i++) {
-	/* change the seed! */
-	++seed;
-	sampler_i(n,indices);
-	/* get pseudo observed y's */
-	for(j=0;j<n;j++) yb[j] = x[j][p] = Fi[j] + res[indices[j]];
-	reset_vec(v, p);
-	reset_mat(x2, p, p);
-	s = 0.0;
-	for(j=0;j<n;j++) {
-		scalar_vec(x[j],yb[j]*w[indices[j]],v_aux,p);
-		sum_vec(v,v_aux,v,p);
-		matias_vec_vec(x4,x[j],x[j],p);
-		scalar_mat(x4,w[indices[j]],x4,p,p);
-		sum_mat(x2,x4,x2,p,p);
-		s += Chi(res_s[indices[j]] / scale , c);
-	};
-	s = s * scale / .5 / (double) (n-p);
-	inverse(x2,x4,p);		/* x4 <- x2^-1 */
-	mat_vec(x4,v,v_aux,p,p);	/* v_aux <- x4 * v */
-	dif_vec(v_aux,Beta_m,v_aux,p); 	/* v_aux <- v_aux - beta_m */
-	/* v has the robust bootstrapped vector, correct it */
-	mat_vec(x3,v_aux,v,p,p);	/* v <- x3 * v_aux */
-	scalar_vec(v2,s-scale,v_aux,p);
-	sum_vec(v_aux,v,v,p);
-	/* store the betas */
-	for(j=0;j<p;j++) {
-		ours[j*m+i]=v[j];
-	};
-};
-}; /* end if(compute_roboot==1) */
-
-
-/* Asymptotic variance */
-
-/* A = sigma \sum \psi'(r_i) x_i x_i' / n
-// a = A \mean( \psi'(r_i) x_i r_i ) / 
-// 		\mean( \chi'(r_i) r_i )
-// AV = A \mean( \psi(r_i)^2 x_i x_i') A -
-// 			a \mean( \chi(r_i) \psi(r_i) x_i' ) A -
-//			A \mean( \chi(r_i) \psi(r_i) x_i ) a' +
-//			\mean( \chi(r_i)^2 - b^2 ) a a'
-*/
-for(i=0;i<n;i++) weights[i] = 1.0 / (double) n / scale * 
-			Psi_reg_prime(res[i]/scale,Psi_constant);
-r_sum_w_x_xprime(x, weights, n, p, x2, x3);
-r_sum_w_x_xprime(x, weights, n, p, x2, x3);
-inverse(x3, x2, p);
-/* x2 = A -- locked */
-s = 0.0;
-for(i=0;i<n;i++) s += Chi_prime(res_s[i]/scale, c) *
-				res_s[i] / scale; 
-s /= (double) n;
-for(i=0;i<n;i++) weights[i] = 
-			Psi_reg_prime(res[i]/scale,Psi_constant) *
-				res[i] / scale / 
-				(double) n / s ;
-r_sum_w_x(x, weights, n, p, v_aux, v);
-mat_vec(x2, v, v2, p, p);
-/* v2 = A v = a -- locked */
-for(i=0;i<n;i++) {
-			u = Psi_reg(res[i]/scale,Psi_constant) ;
-			weights[i] = u*u / (double) n;
-};
-r_sum_w_x_xprime(x, weights, n, p, x3, x5);
-/* x5 = \mean( \psi(r_i)^2 x_i x_i')  */
-mat_mat(x2, x5, x3, p, p, p);
-/* x3 = x2 x5 = A x5 */
-mat_mat(x3, x2, x5, p, p, p);
-/* x5 = x3 x2 = A x5 A -- first term of AV -- locked */
-for(i=0;i<n;i++) weights[i] = Chi(res_s[i]/scale, c) *
-			Psi_reg(res[i]/scale,Psi_constant) /
-			(double) n;
-r_sum_w_x(x, weights, n, p, v_aux, v);
-/* v = \mean( \chi(r_i) \psi(r_i) x_i' )  -- locked */
-matias_vec_vec(x3, v2, v, p);
-/* x3 = a v = a \mean( \chi(r_i) \psi(r_i) x_i' ) */
-mat_mat(x3, x2, x4, p, p, p);
-/* x4 = x3 A = a \mean( \chi(r_i) \psi(r_i) x_i' ) A -- locked */
-/* second term of AV */
-matias_vec_vec(x6, v, v2, p);
-/* x6 = \mean( \chi(r_i) \psi(r_i) x_i ) a' */
-mat_mat(x2, x6, x7, p, p, p);
-/* x7 = A x6 = A \mean( \chi(r_i) \psi(r_i) x_i ) a' -- locked */
-/* third term of AV */
-matias_vec_vec(x8, v2, v2, p);
-/* x8 = a a' */
-s = 0.0;
-for(i=0;i<n;i++) {
-		u = Chi(res_s[i]/scale, c);
-		s += ( u * u - 0.25 );
-};
-s /= (double) n;
-scalar_mat(x8, s, x3, p, p);
-/* x3 = \mean( \chi(r_i)^2 - b^2 ) a a' -- locked
-// fourth term of AV
-*/
-dif_mat(x5, x4, x2, p, p);
-/* x2 = x5 - x4 -- first difference in AV */
-dif_mat(x2, x7, x6, p, p);
-/* x6 = x2 - x7 = x5 - x4 - x7 */
-sum_mat(x6, x3, x2, p, p);
-/* x2 = x6 + x3 = x5 - x4 - x7 + x3 */
-/* x2 contains the AV matrix... */
-for(i=0;i<p;i++)
-	for(j=0;j<p;j++)
-		av[i+j*p] = x2[i][j] / (double) n;
-
-for(i=0;i<n;i++)  
-	free(x[i]);
-for(i=0;i<p;i++) {
-	free(x2[i]); free(x3[i]); free(x4[i]); free(x5[i]);
-	free(x6[i]); free(x7[i]); free(x8[i]); };
-free(x) ;free(x2); free(x3);free(x4); free(x5); free(x6); free(x7); free(x8);
-free(beta_aux);free(beta_m);free(beta_s); free(w);free(ww);free(Fi);free(res);
-free(v);free(v2);free(v_aux);free(yb); free(indices); free(weights);
-}
-
-
-void R_S_rlm(double *X, double *y, int *n, int *P, 
-		int *nres, int *max_it,
-		double *SCale, double *beta_s, double *beta_m,
-		int *converged_mm,
-		int *seed_rand, double *C, double *Psi_c,
-		int *Groups, int *N_group, int *K_fast_s)
-/* x <- design, y <- response, n <- #obs
-   p <- dimension, nres <- #resampling */
+/* This function computes an S-regression estimator */
+void R_roblm_S(double *X, double *y, int *n, int *P, 
+		int *nres, double *scale, double *beta_s, 
+		int *seed_rand, double *C, 
+		double *bb, int *Groups, int *N_group, int *K_fast_s)
 {
 void fast_s_large_n(double *X, double *y,
  		int *nn, int *pp, int *NN, int *K,
@@ -593,86 +44,65 @@ void fast_s(double *X, double *y,
 		int *nn, int *pp, int *NN, int *K, 
 		int *bbest_r, double *bb,	
 		double *rrhoc, double *bbeta, double *sscale);
-int rwls(double **, int, int, double *, double *, double,
-		double, int, double);
-int rwls_chi(double **, int, int, double *, double *, double *,
-		double,double);
-void disp_vec(double *, int);
-void sample_n_outof_N(int, int, int *);
-int lu(double **,int *, double *);
-register int i,j; /* ,k; */
-double best_s=NA, **x_samp, *cand_beta, **x; /* scale */
-double *resid; /* ,s;  */
-double *beta,c, *temp1, *temp2;
-int Nres,N,p,*b_i; /* , zeroes;  */
-int bbest_r = 2, ggroups = *Groups, 
+int Nres, N, p, bbest_r = 2, ggroups = *Groups, 
 	nn_group = *N_group, k_fast_s = *K_fast_s;
-double b = 0.5, rrhoc = *C;
-c = *C;
+double b = *bb, rrhoc = *C;
 Nres = *nres; N = *n; p = *P;
 srand((long)*seed_rand); 
+if( *n > 2000 )
+	fast_s_large_n(X, y, n, P, nres, &k_fast_s,
+			&ggroups, &nn_group, &bbest_r,
+			&b, &rrhoc, beta_s, scale);
+else
+	fast_s(X, y, n, P, nres, &k_fast_s, 
+			&bbest_r, &b, &rrhoc, beta_s, scale);
+
+}
+
+/* This function performs RWLS iterations starting
+ * from an S-regression estimator (and associated 
+ * residual scale) 
+ */
+void R_roblm_MM(double *X, double *y, int *n, int *P, 
+		double *beta_initial, double *scale, 
+		double *beta_m,
+		int *max_it,
+		double *Psi_c,
+		int *converged)
+{
+int rwls(double **, int, int, double *, double *, double,
+		double, int, double);
+double **x; /* scale */
+int N = *n, p = *P, i, j;
 x = (double **) malloc( N * sizeof(double*) );
 for(i=0;i<N;i++) 
         x[i]= (double *) malloc( (p+1) * sizeof(double) );
-b_i = (int *) malloc( p * sizeof(int) );
-cand_beta = (double *) malloc( p * sizeof(double) );
-beta = (double *) malloc( p * sizeof(double) );
-resid = (double *) malloc( N * sizeof(double) );
-x_samp = (double **) malloc( p * sizeof(double*) );
-temp1 = (double*) malloc( N * sizeof(double) );
-temp2 = (double*) malloc( N * sizeof(double) );
-for(i=0;i<p;i++)
-	x_samp[i] = (double *) malloc( (p+1) * sizeof(double) );
 /* rearranges X into a matrix of n x p */
 for(i=0;i<N;i++) {
         for(j=0;j<p;j++)
                 x[i][j]=X[j*N+i];
-        x[i][p]=y[i]; /* don't really use x[][p] but it's
-                       * convenient when calling rwls */
+        x[i][p]=y[i]; 
         };
-
-*nres = 500; /* need less re-sampling candidates! */
-if( *n > 2000 )
-	fast_s_large_n(X, y, n, P, nres, &k_fast_s,
-			&ggroups, &nn_group, &bbest_r,
-			&b, &rrhoc, beta_s, &best_s);
-else
-	fast_s(X, y, n, P, nres, &k_fast_s, 
-			&bbest_r, &b, &rrhoc, beta_s, &best_s);
-
-if(fabs(best_s) < ZERO) {
-			 *SCale = 0.0;
-			for(i=0;i<p;beta_m[i]=beta_s[i++]);
-			free(b_i);free(temp1); free(temp2);
-			for(i=0;i<p;i++)
-        			free(x_samp[i]);
-			free( x_samp ); free(resid);
-			free( cand_beta );
-			free(beta);
-			for(i=0;i<N;i++)
-        			free(x[i]);
-			free(x);
-			return;
+/* starting from the S-estimate (beta_initial), use
+ * irwls to compute the MM-estimate (beta_m)  */
+*converged = 1; 
+if ( rwls(x,N,p,beta_m,beta_initial,*scale,EPS,*max_it,*Psi_c) == 1 )  {
+	for(i=0;i<p;i++) beta_m[i]=beta_initial[i];
+	*converged = 0;  /* rwls failed to converge */
 };
 
-*SCale = best_s;
-/* starting from the S-estimate (beta_s), use
- * irwls to compute the M-estimate (beta_m)  */
-*converged_mm = 1; /* converged by default */
-if ( rwls(x,N,p,beta_m,beta_s,best_s,EPS,*max_it,*Psi_c) == 1 )  {
-	/* printf("\nRWLS did not converge!\n");  */
-	for(i=0;i<p;i++) beta_m[i]=beta_s[i];
-	*converged_mm = 0;  /* rwls failed to converge */
-};
-for(i=0;i<p;i++)
-	free(x_samp[i]);
-free( x_samp ); free(resid); free( cand_beta ); free(beta);
 for(i=0;i<N;i++)
 	free(x[i]);
-free(x);free(temp1); free(temp2);free(b_i);
+free(x);
 }
 
 
+/* this functions solves a linear system of equations
+ * it solves for "x"
+ * a[, 0:(p-1)] x = a[,p]
+ * using the LU decomposition of the p x p matrix
+ * in a[0:(p-1), 0:(p-1)] 
+ */
 int lu(double **a,int *P, double *x)
 {
 int *pp,p;
@@ -680,24 +110,20 @@ register int i,j,k;
 double *kk,s;
 p = *P;
 if ((pp = (int *) malloc(p*sizeof(int)))==NULL)
-	{ printf("\nNot enough memory in LU\n");
-	  exit(1); }
+	  return(1); 
 /* pp vector storing the permutations */
 for(j=0;j<p;j++)   /* cols */
 { pp[j]=j;
-  for(i=j;i<p;i++)   /* filas */
+  for(i=j;i<p;i++)   /* rows */
 	if ( fabs( a[i][j] ) > fabs( a[pp[j]][j] ) )
 		pp[j]=i;
-  if ( pp[j] != j )       /* permuto las filas cambiando los punt */
+  if ( pp[j] != j )       /* permute rows */
 	{ kk=a[j];
 	  a[j]=a[pp[j]];
 	  a[pp[j]]=kk;
 	};
-  /* salida si el sistema resulta singular (det=0)
-   * se detecta si el pivote (j,j) es cero  */
-/*  if ( a[j][j] == 0 ) {   free(pp);
-				return(1);
-				}; */
+  /* return if singular (det=0)
+   * if pivot (j,j) is "zero"  */
     if ( fabs(a[j][j]) < TOL_INVERSE ) {   free(pp);
 				return(1);
 				};
@@ -707,7 +133,7 @@ for(j=0;j<p;j++)   /* cols */
 	for(i=(j+1);i<p;i++)
 		a[k][i] = a[k][i] - a[k][j] * a[j][i];
 
-};    /* cierra el for de j */
+};    /* end of j for loop*/
 for(i=0;i<p;i++)
 	{ s=0.0;
 	  for(j=0;j<i;j++)
@@ -740,35 +166,25 @@ else { t = x / c;
 double Psi_reg(double x, double c)
 {
 /* // 
-// // Tukey's bisquare loss function
+// // First derivative of Tukey's bisquare loss function
 // */
 if (fabs(x)>c) return(0.0);
 else	return( x / c * (1.0-(x/c)*(x/c))*
 		(1.0-(x/c)*(x/c))  );
 }
 
-
-double Chi_prime(double x, double c)
-{
-/* // 
-// // Tukey's bisquare loss function
-// */
-double t;
-if( fabs(x) > c ) return(0.0);
-else { t = x / c ;
-	return( 6.0*t*(1 - t*t) * (1-t*t) / c );
-	}
-}
-
-
 double loss_Tukey(double x, double c)
 {
+double Chi(double x, double c);
+return( Chi(x, c) );
+/*
 if( fabs(x/c) < 1. ) 
 	return( (x/c)*(x/c)/2. * 
 			( 1 - (x/c)*(x/c) + 
 		(x/c)*(x/c)*(x/c)*(x/c)/3. ) );
 else
 	return( 1. / 6. );
+*/
 }
 
 double Loss_Tukey(double *x, int n, double c)
@@ -782,14 +198,10 @@ for(i=0;i<n;i++) s += loss_Tukey(x[i],c);
 return(s);
 }
 
-double Psi_reg_prime(double x, double c)
-{
-if (fabs(x)>c) return(0.0);
-else	return( ( 1.0 - (x/c)*(x/c) ) * 
-		( 1.0 - 5.0 * x * x / c / c ) / c );
-}
-
-
+/* this function finds the k-th place in the
+ * vector a, in the process it permutes the 
+ * elements of a
+ */
 double kthplace(double *a, int n, int k)
 {
 int jnc,j;
@@ -837,11 +249,14 @@ void sample_n_outof_N(int n, int N, int *x)
  * of the indices (0 to N) WITHOUT replication
  * *x receives the output
  * rand() returns an integer between 0 and RAND_MAX
+ *
+ * adapt the other method
+ *
  */
 register int i,j,flag, cand=0;
 if( N < n ) {
-	printf("\nCant get %d out of %d \
-without replication\n", n, N);
+	/* printf("\nCant get %d out of %d \
+without replication\n", n, N); */
 	for(i=0;i<n;i++) x[i] = i;
 } else {
 for(i=0;i<n;i++) {
@@ -858,6 +273,7 @@ for(i=0;i<n;i++) {
 }
 }
 
+/* this functions returns ||x-y|| */
 double norm_diff(double *x, double *y, int n)
 {
 double s=0;
@@ -867,6 +283,7 @@ for(i=0;i<n;i++)
 return( sqrt(s) );
 }
 
+/* C = A + B */
 void sum_mat(double **a, double **b, double **c, int n, int m)
 {
 register int i,j;
@@ -875,14 +292,16 @@ for(i=0;i<n;i++)
 		c[i][j] = a[i][j] + b[i][j];
 }
 
+/* A = v1 %*% t(v2) */
 void matias_vec_vec(double **a, double *v1, double *v2, int n)
 {
 register int i,j;
 for(i=0;i<n;i++)
 	for(j=0;j<n;j++)
-		a[i][j] = v1[i] * v2[j];/* could take advantage of symmetry */
+		a[i][j] = v1[i] * v2[j];
 }
 
+/* C = A * b */
 void scalar_mat(double **a, double b, double **c, int n, int m)
 {
 register int i,j;
@@ -891,6 +310,7 @@ for(i=0;i<n;i++)
 		c[i][j]  = b * a[i][j];
 }
 
+/* c = a * b */
 void scalar_vec(double *a, double b, double *c, int n)
 {
 register int i;
@@ -898,6 +318,7 @@ for(i=0;i<n;i++)
 	c[i]  = b * a[i];
 }
 
+/* returns the inner product of a and b, i.e. t(a) %*% b */
 double vecprime_vec(double *a, double *b, int n)
 {
 register int i;
@@ -906,18 +327,21 @@ for(i=0;i<n;i++) s += a[i] * b[i];
 return(s);
 }
 
+/* c = a + b */
 void sum_vec(double *a, double *b, double *c, int n)
 {
 register int i;
 for(i=0;i<n;i++) c[i] = a[i] + b[i];
 }
 
+/* c = a - b */
 void dif_vec(double *a, double *b, double *c, int n)
 {
 register int i;
 for(i=0;i<n;i++) c[i] = a[i] - b[i];
 }
 
+/* C = A - B */
 void dif_mat(double **a, double **b, double **c, int n, int m)
 {
 register int i,j;
@@ -925,6 +349,7 @@ for(i=0;i<n;i++)
 	for(j=0;j<m;j++) c[i][j] = a[i][j] - b[i][j];
 }
 
+/* c = A %*% b */
 void mat_vec(double **a, double *b, double *c, int n, int m)
 {
 register int i,j; 
@@ -932,6 +357,7 @@ for(i=0;i<n;i++)
 	for(c[i]=0,j=0;j<m;j++) c[i] += a[i][j] * b[j];
 }
 
+/* C = A %*% B */
 void mat_mat(double **a, double **b, double **c, int n, 
 		int m, int l)
 {
@@ -943,44 +369,7 @@ for(i=0;i<n;i++)
 	};
 }
 
-void disp_vec(double *a, int n)
-{
-register int i;
-Rprintf("\n");
-for(i=0;i<n; i++) Rprintf("%lf ",a[i]);
-Rprintf("\n");
-}
-
-
-int inverse(double **a, double **b, int n)
-{
-int lu(double **, int *, double *);
-void mat_vec(double **, double *, double *, int, int);
-void disp_vec(double *, int);
-register int i,j,k;
-double **c, *e;
-c = (double **) malloc( n * sizeof(double *));
-e = (double *) malloc( n * sizeof(double));
-for(i=0;i<n;i++) c[i] = (double *) malloc ( (n+1) * sizeof(double) );
-for(i=0;i<n;i++) {   /* i-th column */
-
-for(j=0;j<n;j++)
-	for(k=0;k<n;k++) c[j][k] = a[j][k];
-for(j=0;j<i;j++) c[j][n] = 0.0;
-c[i][n] = 1.0;
-for(j=i+1;j<n;j++) c[j][n] = 0.0;
-if( lu(c,&n,e) == 1) {
-	for(i=0;i<n;i++) free(c[i]);
-	free(c);free(e);
-	return(1);
-	};	
-for(j=0;j<n;j++) b[j][i] = e[j] ;
-};
-for(i=0;i<n;i++) free(c[i]);
-free(c);free(e);
-return(0);
-}
-
+/* RWLS iterations starting from i_estimate */
 int rwls(double **a, int n, int p, 
 			double *estimate, 
 			double *i_estimate,
@@ -988,12 +377,7 @@ int rwls(double **a, int n, int p,
 			int max_it, double Psi_constant
 			)
 {
-/* a <- matrix n x (p+1) (n rows and p+1 columns) where the data's stored
- * res <- vector n of residuals
- * b <- auxiliar matrix to store A'A | A'c
- */         
 int lu(double **, int *, double *);   
-void disp_vec(double*,int);
 double norm_diff(double *, double *, int);
 double Psi_reg(double, double);
 double Loss_Tukey(double*, int, double);
@@ -1003,10 +387,10 @@ double r,loss1,loss2,lambda;
 int iterations=0, iter_lambda;
 register int i,j,k;
 if ( (b = (double **) malloc ( p * sizeof(double *) ) )==NULL )
-	{printf("\nRun out of memory in rwls\n"); exit(1); };
+	return(1);
 for (i=0;i<p;i++)
 	if ( (b[i] = (double *) malloc ( (p+1) * sizeof(double) ) )==NULL )
-		{printf("\nRun out of memory in rwls\n"); exit(1); };
+		return(1); 
 beta1 = (double *) malloc( p * sizeof(double) );
 beta2 = (double *) malloc( p * sizeof(double) );
 beta0 = (double *) malloc( p * sizeof(double) );
@@ -1016,7 +400,8 @@ for(i=0;i<p;i++)
 	beta2[i] = (beta1[i]=i_estimate[i]) + 1;
 /* main loop */
 while( (norm_diff(beta1,beta2,p) > epsilon) &&
-	( ++iterations < max_it ) ) { /* MAX_ITER ) ) { */
+	( ++iterations < max_it ) ) { 
+R_CheckUserInterrupt();	
 for(i=0;i<n;i++) {
 	s=0;
 	for(j=0;j<p;j++)
@@ -1051,39 +436,40 @@ for(j=0;j<p;j++)
 		 for(i=0;i<n;i++)
 			b[j][k] += a[i][j] * a[i][k] * weights[i];
 		};
-lu(b,&p,beta1);
-/* is beta1 good enough? */
-/* get the residuals and loss for beta1 */
-for(i=0;i<n;i++) 
-	{ s = 0;
-	for(j=0;j<p;j++) 
-		s += a[i][j] * beta1[j];
-	resid[i] = a[i][p] - s;
-	};
-loss1 = Loss_Tukey(resid,n,Psi_constant);
-for(j=0;j<p;j++) beta0[j] = beta1[j];
-lambda = 1.;
-iter_lambda=0; 
-while( ( loss1 > loss2 ) ) {
-	lambda /= 2.;
-	for(j=0;j<p;j++) 
-		beta0[j] = (1 - lambda) * beta2[j] + lambda * beta1[j];
-	/* get the residuals and loss for beta0 */
+/* check if system is singular? */
+if( lu(b,&p,beta1) == 0 ) {
+	/* is beta1 good enough? */
+	/* get the residuals and loss for beta1 */
 	for(i=0;i<n;i++) 
 		{ s = 0;
 		for(j=0;j<p;j++) 
-			s += a[i][j] * beta0[j];
+			s += a[i][j] * beta1[j];
 		resid[i] = a[i][p] - s;
 		};
 	loss1 = Loss_Tukey(resid,n,Psi_constant);
-	if( ++iter_lambda > 1000) {
-		printf("\nStuck in local search. Rwls. ");
-		printf("%f - %f\n",loss1,loss2); 
-		loss1 = loss2; /* force the exit */
-		for(j=0;j<p;j++) beta0[j] = beta2[j];
-		/* return(1); */
+	for(j=0;j<p;j++) beta0[j] = beta1[j];
+	lambda = 1.;
+	iter_lambda=0; 
+	while( ( loss1 > loss2 ) ) {
+		lambda /= 2.;
+		for(j=0;j<p;j++) 
+			beta0[j] = (1 - lambda) * beta2[j] + lambda * beta1[j];
+		/* get the residuals and loss for beta0 */
+		for(i=0;i<n;i++) 
+			{ s = 0;
+			for(j=0;j<p;j++) 
+				s += a[i][j] * beta0[j];
+			resid[i] = a[i][p] - s;
+			};
+		loss1 = Loss_Tukey(resid,n,Psi_constant);
+		if( ++iter_lambda > 1000) {
+			loss1 = loss2; /* force the exit */
+			for(j=0;j<p;j++) beta0[j] = beta2[j];
+			};
+	}; /* end while(loss2 <= loss1 ) */
+	} else { 
+		iterations = max_it;
 	};
-}; /* end while(loss2 <= loss1 ) */
 }; /* end while(norm_diff(...)   */
 for(j=0;j<p;j++) estimate[j]=beta0[j];
 free(weights);free(beta1);free(beta2);
@@ -1096,6 +482,7 @@ if( iterations == max_it ) /* MAX_ITER )  */
 	return 0;
 }
 
+/* sets the entries of a matrix to zero */
 void reset_mat(double **a, int n, int m)
 {
 register int i,j;
@@ -1104,20 +491,11 @@ for(i=0;i<n;i++)
 		a[i][j] = 0.0;
 }
 
+/* sets the entries of a vector to zero */
 void reset_vec(double *a, int n)
 {
 register int i;
 for(i=0;i<n;i++) a[i] = 0.0;
-}
-
-void disp_mat(double **a, int n, int m)
-{
-register int i,j;
-for(i=0;i<n;i++) {
-Rprintf("\n");
-for(j=0;j<m;j++) Rprintf("%10.8f ",a[i][j]);
-};
-Rprintf("\n");
 }
 
 /* 
@@ -1164,8 +542,6 @@ void reset_mat(double **a, int n, int m);
 double loss_rho(double *r, double scale, int n, int p, double rhoc);
 double find_scale(double *r, double b, double rhoc, 
 			double initial_scale, int n, int p);
-void disp_mat(double **a, int n, int m);
-void disp_vec(double *a, int n);
 void fast_s_with_memory(double **x, double *y, 
 		int *nn, int *pp, int *NN, int *K, 
 		int *bbest_r, double *bb,	
@@ -1346,8 +722,6 @@ void refine_fast_s(double **x, double *y, double *weights,
 			int conv, double b, double rhoc,
 			double *is,
 			double *beta_ref, double *scale);
-void disp_vec(double *a, int n);
-void disp_mat(double **a, int n, int m);
 int find_max(double *a, int n);
 double find_scale(double *r, double b, double rhoc, 
 			double initial_scale, int n, int p);
@@ -1396,6 +770,7 @@ for(i=0;i<Nres;i++) {
 	/* find a candidate */
 	no_resamples = 0;
 	while( flag == 1) {
+		R_CheckUserInterrupt();	
 		if( (++no_resamples) > MAX_NO_RESAMPLES ) {
 			Rprintf("\nToo many singular resamples\nAborting\n\n");
 			return;
@@ -1471,8 +846,8 @@ void refine_fast_s(double **x, double *y, double *weights,
 			int conv, double b, double rhoc,
 			double *is,
 			double *beta_ref, double *scale);
-void disp_vec(double *a, int n);
-void disp_mat(double **a, int n, int m);
+/* void disp_mat(double **a, int n, int m);
+void disp_vec(double *a, int n); */
 int find_max(double *a, int n);
 double find_scale(double *r, double b, double rhoc, 
 			double initial_scale, int n, int p);
@@ -1516,6 +891,8 @@ for(i=0;i<p;i++) {
 for(i=0;i<n;i++) 
         for(j=0;j<p;j++)
                 x[i][j]=X[j*n+i];
+
+/* disp_mat(x, n, p); */
 /* set the seed  */
 srand((long)37);
 /* flag for refine(), conv == 0 means do k refining steps
@@ -1530,6 +907,7 @@ for(i=0;i<Nres;i++) {
 	/* find a candidate */
 	no_resamples=0;
 	while( flag == 1) {
+		R_CheckUserInterrupt();	
 		if( (++no_resamples) > MAX_NO_RESAMPLES ) {
 			Rprintf("\nToo many singular resamples\nAborting\n\n");
 			return;
@@ -1547,11 +925,15 @@ for(i=0;i<Nres;i++) {
 		*/
 		flag = lu(x_samp,pp,beta_cand);
 	};
+	/* disp_vec(beta_cand,p); */
 	/* improve the re-sampling candidate */
 	refine_fast_s(x, y, weights, n, p, res,
 			tmp, tmp2, tmp_mat, tmp_mat2,
 			beta_cand, kk, conv, b, rhoc, 
 			&aux, beta_ref, &sc);
+	/* disp_vec(beta_cand,p);
+	disp_vec(beta_ref,p); 
+	Rprintf("%f\n", sc); */
 	if( fabs(sc) < ZERO) {
 		*sscale = sc;
 		for(j=0;j<p;j++) bbeta[j] = beta_cand[j];
@@ -1648,7 +1030,7 @@ void r_sum_w_x(double **x, double *w, int n, int p,
 void r_sum_w_x_xprime(double **x, double *w, int n, int p,
 			double **tmp, double **ans);
 double loss_rho(double *r, double scale, int n, int p, double rhoc);
-double MAD(double *a, int n, int center, double *tmp,
+double MAD(double *a, int n, double center, double *tmp,
 			double *tmp2);
 double vecprime_vec(double *a, double *b, int n);
 register int i,j;
@@ -1664,9 +1046,8 @@ if( zeroes > (((double)n + (double)p)/2.) )
 	*scale = 0.0;
 	return;
 };
-
 if( initial_scale < 0.0 ) 
-	initial_scale = MAD(res, n, 0, tmp, tmp2);
+	initial_scale = MAD(res, n, 0.0, tmp, tmp2);
 s0 = initial_scale;
 if( conv > 0 ) 
 		kk = MAX_ITER_FAST_S;
@@ -1692,7 +1073,7 @@ for(i=0; i < kk; i++) {
 	/* check for convergence? */
 	if(conv > 0) {
 		if(norm_diff(beta_cand, beta_ref, p) /
-					norm(beta_cand, p) < EPSILON )
+					norm(beta_cand, p) < EPS )
 			break;
 	};
 	for(j=0;j<n;j++)
@@ -1742,7 +1123,7 @@ double loss_rho(double *r, double scale, int n, int p, double rhoc);
 int max_it = MAX_ITER_FIND_SCALE, it = 0;
 double e = 1, scale;
 
-while( (++it < max_it) && (fabs(e) > EPSILON) )
+while( (++it < max_it) && (fabs(e) > ZERO) )
 {
 	scale = initial_scale * sqrt(
 			loss_rho(r, initial_scale, n, p, rhoc) /
@@ -1806,7 +1187,7 @@ void r_sum_w_x_xprime(double **x, double *w, int n, int p,
 // need space for p x p "doubles" in tmp
 */
 void sum_mat(double **a, double **b, double **c, int n, int m);
-void matias_vec_vec(double **a, double *v1, double *v2, int n);
+void matias_vec_vec(double **a, double *v1, double *v2, int n); 
 void scalar_mat(double **a, double b, double **c, int n, int m);
 void reset_mat(double **a, int n, int m);
 register int i;
@@ -1814,8 +1195,8 @@ register int i;
 reset_mat(ans, p, p);
 
 for(i=0; i<n; i++) {
-		matias_vec_vec(tmp, x[i], x[i], p);
-		scalar_mat(tmp, w[i], tmp, p, p);
+		matias_vec_vec(tmp, x[i], x[i], p); 
+		scalar_mat(tmp, w[i], tmp, p, p); 
 		sum_mat(ans, tmp, ans, p, p);
 };
 
@@ -1832,7 +1213,7 @@ for(i=0;i<n;i++)
 return(s / ( (double) n - (double) p ) );
 }
 
-
+/* ||x|| */
 double norm(double *x, int n)
 {
 double s = 0;
@@ -1841,23 +1222,17 @@ for(i=0; i<n; i++) s += x[i] * x[i];
 return(sqrt(s));
 }
 
-double MAD(double *a, int n, int center, double *b,
+double MAD(double *a, int n, double center, double *b,
 			double *tmp)
 {
 /* if center == 0 then do not center */
 double median_abs(double *, int , double *);
-double median(double *,int, double *);
 int i;
-double med,q;
-if(center > 0) {
-	med = median(a,n,b);
-} else {
-	med = 0.0;
-};
-for(i=0;i<n;i++) 
-	b[i] = a[i] - med;
-q = median_abs(b,n,tmp) * 1.4826;
-return(q);
+/* if( fabs(center) > 0.0) { */
+	for(i=0;i<n;i++) 
+		b[i] = a[i] - center;
+/* }; */
+return( median_abs(b,n,tmp) * 1.4826 );
 }
 
 double median(double *x, int n, double *aux) 
@@ -1867,7 +1242,7 @@ double t;
 register int i;
 for(i=0;i<n;i++) aux[i]=x[i];
 if ( (n/2) == (double) n / 2 )
-	t = ( kthplace(aux,n,n/2) + kthplace(aux,n,n/2+1) ) / 2 ;
+	t = ( kthplace(aux,n,n/2) + kthplace(aux,n,n/2+1) ) / 2.0 ;
 else	t = kthplace(aux,n, n/2+1 ) ;
 return(t);
 }
@@ -1879,7 +1254,7 @@ double t;
 register int i;
 for(i=0;i<n;i++) aux[i]=fabs(x[i]);
 if ( (n/2) == (double) n / 2 )
-	t = ( kthplace(aux,n,n/2) + kthplace(aux,n,n/2+1) ) / 2 ;
+	t = ( kthplace(aux,n,n/2) + kthplace(aux,n,n/2+1) ) / 2.0 ;
 else 	t = kthplace(aux,n, n/2+1 ) ;
 return(t);
 }
@@ -1905,4 +1280,25 @@ register int i,j;
 for(i=0;i<m;i++) 
 	for(c[i]=0,j=0;j<n;j++) c[i] += a[j][i] * b[j];
 }
+
+
+void disp_vec(double *a, int n)
+{
+register int i;
+Rprintf("\n");
+for(i=0;i<n; i++) Rprintf("%lf ",a[i]);
+Rprintf("\n");
+}
+
+
+void disp_mat(double **a, int n, int m)
+{
+register int i,j;
+for(i=0;i<n;i++) {
+Rprintf("\n");
+for(j=0;j<m;j++) Rprintf("%10.8f ",a[i][j]);
+};
+Rprintf("\n");
+}
+
 

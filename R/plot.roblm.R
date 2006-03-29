@@ -23,6 +23,7 @@ function (x, which = 1:5, caption = c("Standardized residuals vs. Robust Distanc
         on.exit(par(op))
     }
     if (show[1]) {
+		if( length(x$MD) > 0 ) {
         if (p<0||p>1)
            stop ("Tolerance range must be between 0% to 100%")
         else chi <- sqrt( qchisq(p=1-p, df=x$rank) )
@@ -33,6 +34,7 @@ function (x, which = 1:5, caption = c("Standardized residuals vs. Robust Distanc
             title(sub = sub.caption, ...)
         abline(h=c(2.5,-2.5), lty=3)
         abline(v=chi, lty=3)
+		}
     }
     if (show[2]) {
         qqnorm(r, ylab="Residuals", main = main,...)
@@ -68,3 +70,4 @@ function (x, which = 1:5, caption = c("Standardized residuals vs. Robust Distanc
     }
     invisible()
 }
+

@@ -8,7 +8,7 @@ function (x, digits = max(3, getOption("digits") - 3), symbolic.cor=
         "\n\n", sep = "")
     resid <- x$residuals
     df <- x$df
-    df
+    #df
     cat(if (!is.null(x$w) && diff(range(x$w))) 
         "Weighted ", "Residuals:\n", sep = "")
     if (df > 5) {
@@ -20,6 +20,13 @@ function (x, digits = max(3, getOption("digits") - 3), symbolic.cor=
         print(rq, digits = digits, ...)
     }
     else print(resid, digits = digits, ...)
+	if( !(x$converged) ) {
+		cat("\nAlgorithm did not converge\n")
+    	cat("\nCoefficients of *initial* estimator:\n")
+    	printCoefmat(x$coef, digits = digits, signif.stars = signif.stars, 
+       	 ...)
+		cat("\n")
+	} else {
     cat("\nCoefficients:\n")
     printCoefmat(x$coef, digits = digits, signif.stars = signif.stars, 
         ...)
@@ -42,4 +49,6 @@ function (x, digits = max(3, getOption("digits") - 3), symbolic.cor=
     }
     cat("\n")
     invisible(x)
+	}
 }
+

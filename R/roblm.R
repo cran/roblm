@@ -2,7 +2,7 @@
 function (formula, data = list(), weights, na.action,
     model = TRUE, x = FALSE, y = FALSE,
     singular.ok = TRUE, contrasts = NULL, offset = NULL, 
-    control=roblm.control()) 
+    control=roblm.control())
 {
     ret.x <- x
     ret.y <- y
@@ -52,9 +52,11 @@ function (formula, data = list(), weights, na.action,
     z$call <- cl
     z$terms <- mt
 	if( control$compute.rd ) {
-    try( {rob <- MASS::cov.rob(x);
-     z$MD <- sqrt( mahalanobis(x, rob$center, rob$cov) )
-	}, TRUE )
+    	try( expr = {
+			rob <- MASS::cov.rob(x, method='mcd');
+			z$MD <- sqrt( mahalanobis(x, rob$center, rob$cov) )
+			}, 
+			silent = TRUE )
 	}
     if (model) 
         z$model <- mf
@@ -62,8 +64,10 @@ function (formula, data = list(), weights, na.action,
         z$x <- xx
     if (ret.y) 
         z$y <- y
+	z$control <- control
     z
 }
+
 
 .First.lib <- function(lib, pkg) {
 
@@ -76,7 +80,5 @@ function (formula, data = list(), weights, na.action,
 
     library.dynam("roblm", pkg, lib)
 }
-
-
 
 
